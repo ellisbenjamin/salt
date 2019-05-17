@@ -339,8 +339,6 @@ class TestSaltEvent(TestCase):
 
 
 class TestAsyncEventPublisher(AsyncTestCase):
-    def get_new_ioloop(self):
-        return salt.utils.asynchronous.IOLoop()
 
     def setUp(self):
         super(TestAsyncEventPublisher, self).setUp()

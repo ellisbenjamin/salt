@@ -354,7 +354,13 @@ class IPCClient(object):
             return
         self._closing = True
         if self.stream is not None and not self.stream.closed():
-            self.stream.close()
+            # TODO: We get RuntimeErrors on some test cases like,
+            # unit.transport.test_ipc.IPCMessagePubSubCasetest_multi_client_reading
+            # Figure out what is causing this or detect the loop is closed.
+            try:
+                self.stream.close()
+            except RuntimeError as exc:
+                log.error("Error while closing stream %r", exc)
 
 
 class IPCMessageClient(IPCClient):
