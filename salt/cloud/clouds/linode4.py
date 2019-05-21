@@ -130,11 +130,10 @@ def avail_images(call=None):
             'The avail_images function must be called with -f or --function.'
         )
 
-    response = _query('avail', 'distributions')
-
+    response = _query('images')
     ret = {}
-    for item in response['DATA']:
-        name = item['LABEL']
+    for item in response['data']:
+        name = item['label']
         ret[name] = item
 
     return ret
@@ -156,11 +155,11 @@ def avail_locations(call=None):
             'The avail_locations function must be called with -f or --function.'
         )
 
-    response = _query('avail', 'datacenters')
+    response = _query('regions')
 
     ret = {}
-    for item in response['DATA']:
-        name = item['LOCATION']
+    for item in response['data']:
+        name = item['id']
         ret[name] = item
 
     return ret
@@ -182,11 +181,11 @@ def avail_sizes(call=None):
             'The avail_locations function must be called with -f or --function.'
         )
 
-    response = _query('avail', 'LinodePlans')
+    response = _query('linode', 'types')
 
     ret = {}
-    for item in response['DATA']:
-        name = item['LABEL']
+    for item in response['data']:
+        name = item['label']
         ret[name] = item
 
     return ret
@@ -1053,7 +1052,7 @@ def _decode_linode_plan_label(label):
 
             label = new_label
 
-    return sizes[label]['PLANID']
+    return sizes[label]['id']
 
 
 def get_plan_id(kwargs=None, call=None):
@@ -1270,15 +1269,19 @@ def reboot(name, call=None):
         )
 
     node_id = get_linode_id_from_name(name)
-    response = _query('linode', 'reboot', args={'LinodeID': node_id})
-    data = _clean_data(response)
-    reboot_jid = data['JobID']
+    response = _query('linode', 'instances', linode_id = node_id, apply_action='reboot')
 
-    if not _wait_for_job(node_id, reboot_jid):
-        log.error('Reboot failed for %s.', name)
-        return False
+    # data = _clean_data(response)
+    # reboot_jid = data['JobID']
 
-    return data
+    # if not _wait_for_job(node_id, reboot_jid):
+    #     log.error('Reboot failed for %s.', name)
+    #     return False
+    
+    if response != {}:
+        return false
+
+    return response
 
 
 def show_instance(name, call=None):
@@ -1310,16 +1313,14 @@ def show_instance(name, call=None):
 
     node_id = get_linode_id_from_name(name)
     node_data = get_linode(kwargs={'linode_id': node_id})
-    ips = get_ips(node_id)
-    state = int(node_data['STATUS'])
+    state = node_data['status']
 
-    ret = {'id': node_data['LINODEID'],
-           'image': node_data['DISTRIBUTIONVENDOR'],
-           'name': node_data['LABEL'],
-           'size': node_data['TOTALRAM'],
-           'state': _get_status_descr_by_id(state),
-           'private_ips': ips['private_ips'],
-           'public_ips': ips['public_ips']}
+    ret = {'id': node_data['id'],
+           'image': node_data['image'],
+           'name': node_data['label'],
+           'size': node_data['specs']['memory'],
+           'state': node_data['status'],
+           'ips': node_data['ipv4']}
 
     return ret
 
