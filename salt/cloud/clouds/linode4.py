@@ -957,9 +957,9 @@ def get_linode(kwargs=None, call=None):
     if linode_id is None:
         linode_id = get_linode_id_from_name(name)
 
-    result = _query('linode', 'list', args={'LinodeID': linode_id})
+    result = _query('linode', 'instances', linode_id=linode_id)
 
-    return result['DATA'][0]
+    return result
 
 
 def get_linode_id_from_name(name):
@@ -969,12 +969,12 @@ def get_linode_id_from_name(name):
     name
         The name of the Linode from which to get the Linode ID. Required.
     '''
-    nodes = _query('linode', 'list')['DATA']
+    nodes = _query('linode', 'instances')['data']
 
     linode_id = ''
     for node in nodes:
-        if name == node['LABEL']:
-            linode_id = node['LINODEID']
+        if name == node['label']:
+            linode_id = node['id']
             return linode_id
 
     if not linode_id:
@@ -1179,6 +1179,7 @@ def list_nodes(call=None):
 
 
 def list_nodes_full(call=None):
+    #working
     '''
     List linodes, with all available information.
 
@@ -1204,6 +1205,7 @@ def list_nodes_full(call=None):
 
 
 def list_nodes_min(call=None):
+    #working
     '''
     Return a list of the VMs that are on the provider. Only a list of VM names and
     their state is returned. This is the minimum amount of information needed to
@@ -1224,13 +1226,13 @@ def list_nodes_min(call=None):
         )
 
     ret = {}
-    nodes = _query('linode', 'list')['DATA']
+    nodes = _query('linode', 'instances')['data']
 
     for node in nodes:
-        name = node['LABEL']
+        name = node['label']
         this_node = {
-            'id': six.text_type(node['LINODEID']),
-            'state': _get_status_descr_by_id(int(node['STATUS']))
+            'id': node['id'],
+            'state': node['status']
         }
 
         ret[name] = this_node
@@ -1384,19 +1386,17 @@ def start(name, call=None):
         raise SaltCloudException(
             'The start action must be called with -a or --action.'
         )
-
     node_id = get_linode_id_from_name(name)
     node = get_linode(kwargs={'linode_id': node_id})
-
-    if node['STATUS'] == 1:
+    if node['status'] == 'running':
         return {'success': True,
                 'action': 'start',
                 'state': 'Running',
                 'msg': 'Machine already running'}
 
-    response = _query('linode', 'boot', args={'LinodeID': node_id})['DATA']
+    response = _query('linode', 'instances', linode_id=node_id, apply_action='boot')
 
-    if _wait_for_job(node_id, response['JobID']):
+    if response == {}:
         return {'state': 'Running',
                 'action': 'start',
                 'success': True}
@@ -1418,6 +1418,7 @@ def stop(name, call=None):
 
         salt-cloud -a stop vm_name
     '''
+
     if call != 'action':
         raise SaltCloudException(
             'The stop action must be called with -a or --action.'
@@ -1426,14 +1427,14 @@ def stop(name, call=None):
     node_id = get_linode_id_from_name(name)
     node = get_linode(kwargs={'linode_id': node_id})
 
-    if node['STATUS'] == 2:
+    if (node['status'] == 'poweroff') or (node['status'] == 'shutdown'):
         return {'success': True,
                 'state': 'Stopped',
                 'msg': 'Machine already stopped'}
 
-    response = _query('linode', 'shutdown', args={'LinodeID': node_id})['DATA']
+    response = _query('linode', 'instances', linode_id = node_id, apply_action='shutdown')
 
-    if _wait_for_job(node_id, response['JobID']):
+    if response == {}:
         return {'state': 'Stopped',
                 'action': 'stop',
                 'success': True}
@@ -1480,8 +1481,7 @@ def _list_linodes(full=False):
     '''
     Helper function to format and parse linode data
     '''
-    nodes = _query('linode', 'instances').json()['data']
-    # ips = get_ips()
+    nodes = _query('linode', 'instances')['data']
 
     ret = {}
     for node in nodes:
@@ -1492,13 +1492,8 @@ def _list_linodes(full=False):
         this_node['name'] = node['label']
         this_node['size'] = node['specs']['memory']
 
-        # state = int(node['status'])
         this_node['state'] = node['status']
-
-        # for key, val in six.iteritems(ips):
-        #     if key == linode_id:
-        #         this_node['private_ips'] = val['private_ips']
-        #         this_node['public_ips'] = val['public_ips']
+        this_node['ips'] = node['ipv4']
 
         if full:
             this_node['extra'] = node
@@ -1508,7 +1503,7 @@ def _list_linodes(full=False):
     return ret
 
 
-def _query(resource='linode', action=None, linode_id=None, args=None, http_method='get'):
+def _query(resource='linode', action=None, linode_id=None, args=None, apply_action=None, http_method='get'):
     '''
     Make a web call to the Linode API.
     '''
@@ -1517,6 +1512,12 @@ def _query(resource='linode', action=None, linode_id=None, args=None, http_metho
 
     if action:
         path += action
+
+    if linode_id:
+        path = '{0}/{1}'.format(path, linode_id)
+
+    if apply_action:
+        path = '{0}/{1}'.format(path, apply_action)
 
     global LASTCALL
     vm_ = get_configured_provider()
@@ -1537,16 +1538,22 @@ def _query(resource='linode', action=None, linode_id=None, args=None, http_metho
     if LASTCALL >= now:
         time.sleep(ratelimit_sleep)
 
-    resp = requests.get(path, data={}, headers={'Authorization': 'Bearer ' + apikey, 'Content-Type': 'application/json'})
+    if apply_action:
+        resp = requests.post(path, data={}, 
+            headers={'Authorization': 'Bearer ' + apikey, 'Content-Type': 'application/json'}).json()
 
-    # if 'ERRORARRAY' in resp['dict']:
-    #     if resp['dict']['ERRORARRAY']:
-    #         error_list = []
+    else:
+        resp = requests.get(path, data={}, 
+            headers={'Authorization': 'Bearer ' + apikey, 'Content-Type': 'application/json'}).json()
 
-    #         for error in resp['dict']['ERRORARRAY']:
-    #             msg = error['ERRORMESSAGE']
+    # if 'errors' in resp:
+    #     if resp['errors']:
+    #         error_list = resp['errors']
 
-    #             if msg == "Authentication failed":
+    #         for error in error_list:
+    #             msg = error['reason']
+
+    #             if msg == "Invalid OAuth Token":
     #                 raise SaltCloudSystemExit(
     #                     'Linode API Key is expired or invalid'
     #                 )
