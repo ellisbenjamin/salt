@@ -57,6 +57,11 @@ log = logging.getLogger(__name__)
 # The epoch of the last time a query was made
 LASTCALL = int(time.mktime(datetime.datetime.now().timetuple()))
 
+
+
+
+
+
 # Human-readable status fields (documentation: https://www.linode.com/api/linode/linode.list)
 # LINODE_STATUS = {
 #     'boot_failed': {
@@ -192,6 +197,8 @@ def avail_sizes(call=None):
 
 
 def boot(name=None, kwargs=None, call=None):
+    
+
     '''
     Boot a Linode.
 
@@ -225,6 +232,7 @@ def boot(name=None, kwargs=None, call=None):
         salt-cloud -f boot my-linode-config name=my-instance config_id=10
         salt-cloud -f boot my-linode-config linode_id=1225876 config_id=10
     '''
+
     if name is None and call == 'action':
         raise SaltCloudSystemExit(
             'The boot action requires a \'name\'.'
@@ -245,11 +253,6 @@ def boot(name=None, kwargs=None, call=None):
             'The boot function requires either a \'name\' or a \'linode_id\'.'
         )
 
-    if config_id is None:
-        raise SaltCloudSystemExit(
-            'The boot function requires a \'config_id\'.'
-        )
-
     if linode_id is None:
         linode_id = get_linode_id_from_name(name)
         linode_item = name
@@ -258,22 +261,15 @@ def boot(name=None, kwargs=None, call=None):
 
     # Check if Linode is running first
     if check_running is True:
-        status = get_linode(kwargs={'linode_id': linode_id})['STATUS']
-        if status == '1':
+        status = get_linode(kwargs={'linode_id': linode_id})['status']
+        if status == 'running':
             raise SaltCloudSystemExit(
                 'Cannot boot Linode {0}. '
                 'Linode {0} is already running.'.format(linode_item)
             )
 
     # Boot the VM and get the JobID from Linode
-    response = _query('linode', 'boot',
-                      args={'LinodeID': linode_id,
-                            'ConfigID': config_id})['DATA']
-    boot_job_id = response['JobID']
-
-    if not _wait_for_job(linode_id, boot_job_id):
-        log.error('Boot failed for Linode %s.', linode_item)
-        return False
+    response = _query('linode', 'instances', linode_id=linode_id, apply_action='boot')
 
     return True
 
@@ -1263,6 +1259,7 @@ def reboot(name, call=None):
 
         salt-cloud -a reboot vm_name
     '''
+    breakpoint()
     if call != 'action':
         raise SaltCloudException(
             'The show_instance action must be called with -a or --action.'
@@ -1539,6 +1536,8 @@ def _query(resource='linode', action=None, linode_id=None, args=None, apply_acti
     if LASTCALL >= now:
         time.sleep(ratelimit_sleep)
 
+    print(path)
+
     if apply_action:
         resp = requests.post(path, data={}, 
             headers={'Authorization': 'Bearer ' + apikey, 'Content-Type': 'application/json'}).json()
@@ -1564,9 +1563,8 @@ def _query(resource='linode', action=None, linode_id=None, args=None, apply_acti
     #             'Linode API reported error(s): {}'.format(", ".join(error_list))
     #         )
 
-    # LASTCALL = int(time.mktime(datetime.datetime.now().timetuple()))
+    LASTCALL = int(time.mktime(datetime.datetime.now().timetuple()))
     # log.debug('Linode Response Status Code: %s', resp['status'])
-
     return resp
 
 
