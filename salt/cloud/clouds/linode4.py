@@ -197,7 +197,7 @@ def avail_sizes(call=None):
 
 
 def boot(name=None, kwargs=None, call=None):
-    
+
 
     '''
     Boot a Linode.
@@ -1259,10 +1259,10 @@ def reboot(name, call=None):
 
         salt-cloud -a reboot vm_name
     '''
-    breakpoint()
+
     if call != 'action':
         raise SaltCloudException(
-            'The show_instance action must be called with -a or --action.'
+            'The reboot action must be called with -a or --action.'
         )
 
     node_id = get_linode_id_from_name(name)
